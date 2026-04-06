@@ -1,0 +1,16 @@
+{
+  "name": "wotsapp",
+  "version": "1.0.0",
+  "description": "A fake WhatsApp web app where all contacts are AI-powered characters",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "openai": "^4.28.0",
+    "@anthropic-ai/sdk": "^0.17.1",
+    "uuid": "^9.0.0"
+  }
+}
