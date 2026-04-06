@@ -24,7 +24,7 @@
   --radius-msg: 7.5px;
 }
 
-html, body { height: 100%; overflow: hidden; background: var(--bg-deep); font-family: var(--font); color: var(--text-pri); font-size: 15px; }
+html, body { height: 100%; overflow: hidden; background: var(--bg-deep); font-family: var(--font); color: var(--text-pri); font-size: 15px; touch-action: manipulation; }
 
 #app {
   display: flex;
@@ -589,4 +589,135 @@ html, body { height: 100%; overflow: hidden; background: var(--bg-deep); font-fa
   #main.mobile-visible { display: flex; }
   #btn-back { display: flex; }
   #app { position: relative; }
+}
+
+/* ── Account setup screen ── */
+#setup-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+  padding: 20px;
+}
+#setup-screen.hidden { display: none; }
+
+.setup-inner {
+  text-align: center;
+  max-width: 380px;
+  width: 100%;
+}
+.setup-logo svg { width: 90px; height: 90px; margin-bottom: 24px; }
+.setup-inner h1 { font-size: 26px; font-weight: 400; margin-bottom: 8px; }
+.setup-sub { color: var(--text-sec); font-size: 14px; margin-bottom: 32px; }
+
+.setup-form { display: flex; flex-direction: column; gap: 14px; text-align: left; }
+.setup-field { display: flex; flex-direction: column; gap: 6px; }
+.setup-field label { font-size: 13px; color: var(--text-sec); }
+.setup-field input {
+  background: var(--bg-panel);
+  border: 1px solid var(--divider);
+  border-radius: 10px;
+  color: var(--text-pri);
+  font-size: 16px;
+  font-family: var(--font);
+  padding: 13px 16px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.setup-field input:focus { border-color: var(--accent); }
+.setup-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 500;
+  font-family: var(--font);
+  padding: 14px;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: background 0.15s;
+}
+.setup-btn:hover { background: var(--accent-dim); }
+
+/* ── Directory / new-chat panel ── */
+.modal-wide {
+  max-width: 520px !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  overflow: hidden;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--divider);
+  flex-shrink: 0;
+}
+.modal-header h3 { font-size: 18px; font-weight: 500; }
+.modal-search {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--divider);
+  flex-shrink: 0;
+}
+.modal-search .search-inner { background: var(--bg-input); border-radius: 8px; }
+
+#directory-list {
+  overflow-y: auto;
+  flex: 1;
+}
+#directory-list::-webkit-scrollbar { width: 4px; }
+#directory-list::-webkit-scrollbar-thumb { background: var(--divider); border-radius: 2px; }
+
+.dir-section-label {
+  font-size: 12px;
+  color: var(--text-sec);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 10px 16px 4px;
+}
+.dir-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.dir-item:hover { background: var(--bg-input); }
+.dir-item-avatar {
+  width: 46px; height: 46px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+.dir-item-info { flex: 1; min-width: 0; }
+.dir-item-name { font-size: 16px; font-weight: 400; }
+.dir-item-bio {
+  font-size: 13px;
+  color: var(--text-sec);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dir-item-active {
+  font-size: 12px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.dir-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-sec);
+  font-size: 14px;
+  line-height: 1.6;
 }

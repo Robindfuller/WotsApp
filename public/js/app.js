@@ -4,20 +4,70 @@
 
 let contacts = [];
 let groups = [];
+let activeChats = { contacts: [], groups: [] };  // IDs the user has started chatting with
+let account = null;
+
 let activeChatId = null;
 let activeChatIsGroup = false;
-let unreadCounts = {};         // chatId → count
-let typingTimers = {};         // chatId → timeout handle
-let currentGroupTypers = {};   // chatId → Set of contactIds currently typing
+let activeChatPending = false;   // true = user opened but hasn't sent first msg yet
 
-// ─── Init ────────────────────────────────────────────────────────────────────
+let unreadCounts = {};
+let currentGroupTypers = {};   // chatId → Set of contactIds typing
 
-async function init() {
-  await Promise.all([loadContacts(), loadGroups()]);
+// ─── Boot ────────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    account = await api('GET', '/api/account');
+    launchApp();
+  } catch {
+    showSetupScreen();
+  }
+});
+
+function showSetupScreen() {
+  document.getElementById('setup-screen').classList.remove('hidden');
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('setup-displayname').focus();
+}
+
+async function launchApp() {
+  document.getElementById('setup-screen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+
+  // Show user's initials/name in avatar
+  const initials = account.displayName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  document.getElementById('my-avatar').textContent = initials;
+  document.getElementById('my-avatar').title = account.displayName;
+
+  await Promise.all([loadContacts(), loadGroups(), loadActiveChats()]);
   renderChatList();
   connectSSE();
   setupEventListeners();
   checkSettings();
+}
+
+// ─── Account setup ────────────────────────────────────────────────────────────
+
+document.getElementById('btn-create-account').addEventListener('click', createAccount);
+document.getElementById('setup-displayname').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('setup-username').focus();
+});
+document.getElementById('setup-username').addEventListener('keydown', e => {
+  if (e.key === 'Enter') createAccount();
+});
+
+async function createAccount() {
+  const displayName = document.getElementById('setup-displayname').value.trim();
+  const username = document.getElementById('setup-username').value.trim();
+  if (!displayName) { document.getElementById('setup-displayname').focus(); return; }
+  if (!username) { document.getElementById('setup-username').focus(); return; }
+  try {
+    account = await api('POST', '/api/account', { displayName, username });
+    launchApp();
+  } catch (err) {
+    showToast(err.message, true);
+  }
 }
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
@@ -33,37 +83,35 @@ async function api(method, path, body) {
   return r.json();
 }
 
-async function loadContacts() {
-  contacts = await api('GET', '/api/contacts');
-}
+async function loadContacts() { contacts = await api('GET', '/api/contacts'); }
+async function loadGroups() { groups = await api('GET', '/api/groups'); }
+async function loadActiveChats() { activeChats = await api('GET', '/api/active-chats'); }
 
-async function loadGroups() {
-  groups = await api('GET', '/api/groups');
-}
-
-// ─── Chat list rendering ─────────────────────────────────────────────────────
+// ─── Chat list (only active chats) ───────────────────────────────────────────
 
 async function renderChatList() {
   const list = document.getElementById('chat-list');
   const search = document.getElementById('search-input').value.toLowerCase();
 
-  // Load previews for all chats
-  const allChats = [
-    ...contacts.map(c => ({ ...c, isGroup: false, chatId: c.id })),
-    ...groups.map(g => ({ ...g, isGroup: true, chatId: g.id }))
+  const activeContacts = contacts.filter(c => activeChats.contacts.includes(c.id));
+  const activeGroups = groups.filter(g => activeChats.groups.includes(g.id));
+
+  const allActive = [
+    ...activeContacts.map(c => ({ ...c, isGroup: false, chatId: c.id })),
+    ...activeGroups.map(g => ({ ...g, isGroup: true, chatId: g.id }))
   ];
 
-  if (!allChats.length) {
-    list.innerHTML = '<div class="empty-list">No contacts yet.<br>Tap the contact icon to add one.</div>';
+  if (!allActive.length) {
+    list.innerHTML = `<div class="empty-list">No conversations yet.<br>Tap <strong>New Chat</strong> to find someone to talk to.</div>`;
     return;
   }
 
-  // Load last messages and sort by time
-  const previews = await Promise.all(allChats.map(async item => {
+  // Load last messages and sort by recency
+  const previews = await Promise.all(allActive.map(async item => {
     const chat = await api('GET', `/api/chats/${item.chatId}`);
     const msgs = chat.messages;
     const last = msgs[msgs.length - 1] || null;
-    return { ...item, lastMsg: last, msgCount: msgs.length };
+    return { ...item, lastMsg: last };
   }));
 
   previews.sort((a, b) => {
@@ -77,21 +125,18 @@ async function renderChatList() {
     : previews;
 
   list.innerHTML = '';
-  for (const item of filtered) {
-    list.appendChild(buildChatItem(item));
-  }
+  for (const item of filtered) list.appendChild(buildChatItem(item));
 }
 
 function buildChatItem(item) {
   const div = document.createElement('div');
   div.className = 'chat-item' + (activeChatId === item.chatId ? ' active' : '');
   div.dataset.chatId = item.chatId;
-  div.dataset.isGroup = item.isGroup;
 
   const unread = unreadCounts[item.chatId] || 0;
   const last = item.lastMsg;
   const timeStr = last ? formatTime(last.timestamp) : '';
-  const preview = last ? truncate(last.text, 42) : (item.isGroup ? 'Group chat' : item.personality ? truncate(item.personality, 42) : '');
+  const preview = last ? truncate(last.text, 42) : (item.isGroup ? 'Group chat' : '');
   const isUnread = unread > 0;
 
   const initials = item.isGroup
@@ -108,7 +153,6 @@ function buildChatItem(item) {
         <span class="chat-item-time ${isUnread ? 'unread-time' : ''}">${timeStr}</span>
       </div>
       <div class="chat-item-bottom">
-        ${last && !last.fromUser && !last.isGroup ? ticksSVG(last.status) : ''}
         <span class="chat-item-preview">${esc(preview)}</span>
         ${unread ? `<span class="unread-badge">${unread}</span>` : ''}
       </div>
@@ -119,25 +163,108 @@ function buildChatItem(item) {
   return div;
 }
 
-// ─── Open chat ───────────────────────────────────────────────────────────────
+// ─── New Chat directory panel ─────────────────────────────────────────────────
+
+function openNewChatPanel() {
+  document.getElementById('panel-new-chat').classList.remove('hidden');
+  document.getElementById('directory-search').value = '';
+  renderDirectory('');
+  setTimeout(() => document.getElementById('directory-search').focus(), 60);
+}
+
+function closeNewChatPanel() {
+  document.getElementById('panel-new-chat').classList.add('hidden');
+}
+
+function renderDirectory(search) {
+  const list = document.getElementById('directory-list');
+  const q = search.toLowerCase();
+
+  const filteredContacts = contacts.filter(c =>
+    !q || c.name.toLowerCase().includes(q) || (c.personality || '').toLowerCase().includes(q)
+  );
+  const filteredGroups = groups.filter(g =>
+    !q || g.name.toLowerCase().includes(q)
+  );
+
+  if (!filteredContacts.length && !filteredGroups.length) {
+    list.innerHTML = `<div class="dir-empty">No contacts found.<br>Add contacts via <a href="/manage" style="color:var(--accent)">the editor</a>.</div>`;
+    return;
+  }
+
+  list.innerHTML = '';
+
+  if (filteredContacts.length) {
+    const label = document.createElement('div');
+    label.className = 'dir-section-label';
+    label.textContent = 'Contacts';
+    list.appendChild(label);
+
+    filteredContacts.forEach(c => {
+      const isActive = activeChats.contacts.includes(c.id);
+      const row = document.createElement('div');
+      row.className = 'dir-item';
+      row.innerHTML = `
+        <div class="dir-item-avatar" style="background:${c.color}">${c.name.charAt(0).toUpperCase()}</div>
+        <div class="dir-item-info">
+          <div class="dir-item-name">${esc(c.name)}</div>
+          <div class="dir-item-bio">${esc(truncate(c.personality, 55))}</div>
+        </div>
+        ${isActive ? '<span class="dir-item-active">In chats</span>' : ''}
+      `;
+      row.addEventListener('click', () => {
+        closeNewChatPanel();
+        openChat(c.id, false);
+      });
+      list.appendChild(row);
+    });
+  }
+
+  if (filteredGroups.length) {
+    const label = document.createElement('div');
+    label.className = 'dir-section-label';
+    label.textContent = 'Groups';
+    list.appendChild(label);
+
+    filteredGroups.forEach(g => {
+      const isActive = activeChats.groups.includes(g.id);
+      const memberNames = (g.members || []).map(id => contacts.find(c => c.id === id)?.name).filter(Boolean).join(', ');
+      const initials = g.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+      const row = document.createElement('div');
+      row.className = 'dir-item';
+      row.innerHTML = `
+        <div class="dir-item-avatar" style="background:#6a7f8c">${initials}</div>
+        <div class="dir-item-info">
+          <div class="dir-item-name">${esc(g.name)}</div>
+          <div class="dir-item-bio">${esc(truncate(memberNames, 55))}</div>
+        </div>
+        ${isActive ? '<span class="dir-item-active">In chats</span>' : ''}
+      `;
+      row.addEventListener('click', () => {
+        closeNewChatPanel();
+        openChat(g.id, true);
+      });
+      list.appendChild(row);
+    });
+  }
+}
+
+// ─── Open chat ────────────────────────────────────────────────────────────────
 
 async function openChat(chatId, isGroup) {
   activeChatId = chatId;
   activeChatIsGroup = isGroup;
+  activeChatPending = isGroup
+    ? !activeChats.groups.includes(chatId)
+    : !activeChats.contacts.includes(chatId);
+
   unreadCounts[chatId] = 0;
 
   document.getElementById('welcome-screen').classList.add('hidden');
-  const chatView = document.getElementById('chat-view');
-  chatView.classList.remove('hidden');
-
-  // Mobile: show main panel
+  document.getElementById('chat-view').classList.remove('hidden');
   document.getElementById('main').classList.add('mobile-visible');
 
-  // Header
-  const entity = isGroup
-    ? groups.find(g => g.id === chatId)
-    : contacts.find(c => c.id === chatId);
-
+  const entity = isGroup ? groups.find(g => g.id === chatId) : contacts.find(c => c.id === chatId);
   if (!entity) return;
 
   const initials = isGroup
@@ -153,28 +280,22 @@ async function openChat(chatId, isGroup) {
     ? entity.members.map(id => contacts.find(c => c.id === id)?.name).filter(Boolean).join(', ')
     : 'AI contact';
 
-  // Load messages
   const chat = await api('GET', `/api/chats/${chatId}`);
   renderMessages(chat.messages, isGroup);
 
-  // Highlight in list
-  document.querySelectorAll('.chat-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.chatId === chatId);
-  });
+  document.querySelectorAll('.chat-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.chatId === chatId)
+  );
 
-  // Focus input
   document.getElementById('message-input').focus();
-
-  // Re-render chat list to update unread counts
   renderChatList();
 }
 
-// ─── Message rendering ───────────────────────────────────────────────────────
+// ─── Message rendering ────────────────────────────────────────────────────────
 
 function renderMessages(messages, isGroup) {
   const container = document.getElementById('messages-container');
   container.innerHTML = '';
-  // Remove any stale typing bubble
   removeTypingBubble(activeChatId);
 
   let lastDate = null;
@@ -184,7 +305,9 @@ function renderMessages(messages, isGroup) {
       container.appendChild(dateSeparator(msgDate));
       lastDate = msgDate;
     }
-    container.appendChild(buildMsgBubble(msg, isGroup));
+    const bubble = buildMsgBubble(msg, isGroup);
+    bubble.dataset.ts = msg.timestamp;
+    container.appendChild(bubble);
   }
   scrollToBottom();
 }
@@ -221,19 +344,16 @@ function dateSeparator(dateStr) {
   return el;
 }
 
-// ─── Typing indicator ────────────────────────────────────────────────────────
+// ─── Typing indicator ─────────────────────────────────────────────────────────
 
 function showTyping(chatId, contactId, isGroup) {
   if (chatId !== activeChatId) return;
-
-  // Track group typers
   if (!currentGroupTypers[chatId]) currentGroupTypers[chatId] = new Set();
   currentGroupTypers[chatId].add(contactId);
 
   const contact = contacts.find(c => c.id === contactId);
   const name = contact ? contact.name : '';
 
-  // Remove existing typing bubble for this chat
   removeTypingBubble(chatId);
 
   const container = document.getElementById('messages-container');
@@ -245,11 +365,8 @@ function showTyping(chatId, contactId, isGroup) {
   bubble.innerHTML = `${nameEl}<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>`;
   container.appendChild(bubble);
 
-  // Update header status
   const statusEl = document.getElementById('chat-header-status');
-  if (statusEl) {
-    statusEl.textContent = isGroup ? `${name} is typing…` : 'typing…';
-  }
+  if (statusEl) statusEl.textContent = isGroup ? `${name} is typing…` : 'typing…';
 
   scrollToBottom();
 }
@@ -257,12 +374,10 @@ function showTyping(chatId, contactId, isGroup) {
 function stopTyping(chatId, contactId, isGroup) {
   if (currentGroupTypers[chatId]) {
     currentGroupTypers[chatId].delete(contactId);
-    if (currentGroupTypers[chatId].size > 0) return; // others still typing
+    if (currentGroupTypers[chatId].size > 0) return;
   }
-
   removeTypingBubble(chatId);
 
-  // Reset header status
   if (chatId === activeChatId) {
     const statusEl = document.getElementById('chat-header-status');
     const entity = activeChatIsGroup
@@ -277,11 +392,10 @@ function stopTyping(chatId, contactId, isGroup) {
 }
 
 function removeTypingBubble(chatId) {
-  const el = document.getElementById(`typing-${chatId}`);
-  if (el) el.remove();
+  document.getElementById(`typing-${chatId}`)?.remove();
 }
 
-// ─── SSE ─────────────────────────────────────────────────────────────────────
+// ─── SSE ──────────────────────────────────────────────────────────────────────
 
 function connectSSE() {
   const es = new EventSource('/api/events');
@@ -290,39 +404,36 @@ function connectSSE() {
     const { chatId, message, isGroup } = JSON.parse(e.data);
     handleIncomingMessage(chatId, message, isGroup);
   });
-
   es.addEventListener('typing', e => {
     const { chatId, contactId, isGroup, stop } = JSON.parse(e.data);
     if (stop) stopTyping(chatId, contactId, isGroup);
     else showTyping(chatId, contactId, isGroup);
   });
-
   es.addEventListener('messageStatus', e => {
     const { chatId, messageId, status } = JSON.parse(e.data);
     updateMessageStatus(chatId, messageId, status);
   });
-
   es.addEventListener('error', e => {
     const { chatId, error } = JSON.parse(e.data);
     showToast(error, true);
     stopTyping(chatId, null, false);
   });
-
-  es.onerror = () => {
-    setTimeout(connectSSE, 3000);
-  };
+  es.onerror = () => setTimeout(connectSSE, 3000);
 }
 
 function handleIncomingMessage(chatId, message, isGroup) {
   removeTypingBubble(chatId);
 
+  // If this chat just became active (offline message to a chat we own), reload active list
+  const isKnownActive = isGroup
+    ? activeChats.groups.includes(chatId)
+    : activeChats.contacts.includes(chatId);
+
   if (chatId === activeChatId) {
     const container = document.getElementById('messages-container');
-    // Check date separator
     const msgs = container.querySelectorAll('[data-msg-id]');
-    const lastMsg = msgs[msgs.length - 1];
-    const lastTime = lastMsg ? parseInt(lastMsg.dataset.ts || '0') : 0;
-    if (!lastTime || toDateString(lastTime) !== toDateString(message.timestamp)) {
+    const lastTs = msgs.length ? parseInt(msgs[msgs.length - 1].dataset.ts || '0') : 0;
+    if (!lastTs || toDateString(lastTs) !== toDateString(message.timestamp)) {
       container.appendChild(dateSeparator(toDateString(message.timestamp)));
     }
     const bubble = buildMsgBubble(message, isGroup);
@@ -339,8 +450,7 @@ function handleIncomingMessage(chatId, message, isGroup) {
 function updateMessageStatus(chatId, messageId, status) {
   if (chatId !== activeChatId) return;
   const bubble = document.querySelector(`[data-msg-id="${messageId}"]`);
-  if (!bubble) return;
-  const ticks = bubble.querySelector('.msg-ticks');
+  const ticks = bubble?.querySelector('.msg-ticks');
   if (ticks) ticks.innerHTML = ticksSVG(status);
 }
 
@@ -361,7 +471,12 @@ async function sendMessage() {
 
     const msg = await api('POST', endpoint, { text });
 
-    // Optimistically render
+    // If this was a pending (first-time) chat, it's now active
+    if (activeChatPending) {
+      activeChatPending = false;
+      await loadActiveChats();
+    }
+
     const container = document.getElementById('messages-container');
     const bubble = buildMsgBubble(msg, activeChatIsGroup);
     bubble.dataset.ts = msg.timestamp;
@@ -373,80 +488,8 @@ async function sendMessage() {
   }
 }
 
-// ─── Modals ───────────────────────────────────────────────────────────────────
+// ─── Settings modal ───────────────────────────────────────────────────────────
 
-function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
-function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
-
-// Contact modal
-let editingContactId = null;
-
-function openContactModal(contact = null) {
-  editingContactId = contact ? contact.id : null;
-  document.getElementById('modal-contact-title').textContent = contact ? 'Edit Contact' : 'Add Contact';
-  document.getElementById('contact-name').value = contact ? contact.name : '';
-  document.getElementById('contact-personality').value = contact ? contact.personality : '';
-  openModal('modal-contact');
-  setTimeout(() => document.getElementById('contact-name').focus(), 50);
-}
-
-async function saveContact() {
-  const name = document.getElementById('contact-name').value.trim();
-  const personality = document.getElementById('contact-personality').value.trim();
-  if (!name) { showToast('Name is required', true); return; }
-  if (!personality) { showToast('Personality is required', true); return; }
-
-  try {
-    if (editingContactId) {
-      await api('PUT', `/api/contacts/${editingContactId}`, { name, personality });
-    } else {
-      await api('POST', '/api/contacts', { name, personality });
-    }
-    closeModal('modal-contact');
-    await loadContacts();
-    renderChatList();
-  } catch (err) {
-    showToast(err.message, true);
-  }
-}
-
-// Group modal
-async function openGroupModal() {
-  await loadContacts();
-  const list = document.getElementById('group-member-list');
-  list.innerHTML = '';
-  if (!contacts.length) {
-    list.innerHTML = '<div style="color:var(--text-sec);font-size:13px">Add contacts first</div>';
-  } else {
-    contacts.forEach(c => {
-      const label = document.createElement('label');
-      label.className = 'member-check';
-      label.innerHTML = `<input type="checkbox" value="${c.id}" /><span>${esc(c.name)}</span>`;
-      list.appendChild(label);
-    });
-  }
-  document.getElementById('group-name').value = '';
-  openModal('modal-group');
-  setTimeout(() => document.getElementById('group-name').focus(), 50);
-}
-
-async function saveGroup() {
-  const name = document.getElementById('group-name').value.trim();
-  const members = [...document.querySelectorAll('#group-member-list input:checked')].map(i => i.value);
-  if (!name) { showToast('Group name is required', true); return; }
-  if (members.length < 2) { showToast('Select at least 2 members', true); return; }
-
-  try {
-    await api('POST', '/api/groups', { name, members });
-    closeModal('modal-group');
-    await loadGroups();
-    renderChatList();
-  } catch (err) {
-    showToast(err.message, true);
-  }
-}
-
-// Settings modal
 async function openSettingsModal() {
   try {
     const s = await api('GET', '/api/settings');
@@ -454,7 +497,7 @@ async function openSettingsModal() {
     document.getElementById('settings-model').value = s.model || '';
     document.getElementById('settings-apikey').value = '';
     document.getElementById('settings-key-status').textContent = s.hasKey ? '✓ API key saved' : 'No API key saved yet';
-    openModal('modal-settings');
+    document.getElementById('modal-settings').classList.remove('hidden');
     setTimeout(() => document.getElementById('settings-apikey').focus(), 50);
   } catch (err) { showToast(err.message, true); }
 }
@@ -465,68 +508,56 @@ async function saveSettings() {
   const apiKey = document.getElementById('settings-apikey').value.trim();
   try {
     await api('POST', '/api/settings', { provider, model, apiKey: apiKey || undefined });
-    closeModal('modal-settings');
+    document.getElementById('modal-settings').classList.add('hidden');
     showToast('Settings saved');
   } catch (err) { showToast(err.message, true); }
 }
 
-// ─── Settings check on load ──────────────────────────────────────────────────
-
 async function checkSettings() {
   try {
     const s = await api('GET', '/api/settings');
-    if (!s.hasKey) {
-      // Show a gentle hint after 1 second
-      setTimeout(() => showToast('Add your API key in Settings to enable AI replies'), 1000);
-    }
+    if (!s.hasKey) setTimeout(() => showToast('Add your API key in Settings to enable AI replies'), 1000);
   } catch {}
 }
 
-// ─── Event listeners ─────────────────────────────────────────────────────────
+// ─── Event listeners ──────────────────────────────────────────────────────────
 
 function setupEventListeners() {
-  // Search
   document.getElementById('search-input').addEventListener('input', renderChatList);
 
-  // Send
   document.getElementById('btn-send').addEventListener('click', sendMessage);
   document.getElementById('message-input').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
   document.getElementById('message-input').addEventListener('input', function() { autoResize(this); });
 
-  // Buttons
-  document.getElementById('btn-new-contact').addEventListener('click', () => openContactModal());
-  document.getElementById('btn-new-group').addEventListener('click', openGroupModal);
+  document.getElementById('btn-new-chat').addEventListener('click', openNewChatPanel);
+  document.getElementById('btn-close-new-chat').addEventListener('click', closeNewChatPanel);
+  document.getElementById('panel-new-chat').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeNewChatPanel();
+  });
+  document.getElementById('directory-search').addEventListener('input', e => {
+    renderDirectory(e.target.value);
+  });
+
   document.getElementById('btn-settings').addEventListener('click', openSettingsModal);
+  document.getElementById('btn-settings-save').addEventListener('click', saveSettings);
+  document.getElementById('btn-settings-cancel').addEventListener('click', () => {
+    document.getElementById('modal-settings').classList.add('hidden');
+  });
+  document.getElementById('modal-settings').addEventListener('click', e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden');
+  });
+
   document.getElementById('btn-back').addEventListener('click', () => {
     document.getElementById('main').classList.remove('mobile-visible');
     activeChatId = null;
   });
 
-  // Contact modal
-  document.getElementById('btn-contact-save').addEventListener('click', saveContact);
-  document.getElementById('btn-contact-cancel').addEventListener('click', () => closeModal('modal-contact'));
-
-  // Group modal
-  document.getElementById('btn-group-save').addEventListener('click', saveGroup);
-  document.getElementById('btn-group-cancel').addEventListener('click', () => closeModal('modal-group'));
-
-  // Settings modal
-  document.getElementById('btn-settings-save').addEventListener('click', saveSettings);
-  document.getElementById('btn-settings-cancel').addEventListener('click', () => closeModal('modal-settings'));
-
-  // Close modals on overlay click
-  ['modal-contact', 'modal-group', 'modal-settings'].forEach(id => {
-    document.getElementById(id).addEventListener('click', e => {
-      if (e.target.classList.contains('modal-overlay')) closeModal(id);
-    });
-  });
-
-  // Keyboard escape
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      ['modal-contact', 'modal-group', 'modal-settings'].forEach(closeModal);
+      closeNewChatPanel();
+      document.getElementById('modal-settings').classList.add('hidden');
     }
   });
 }
@@ -571,8 +602,6 @@ function esc(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>');
 }
 
-// ─── Tick SVGs ────────────────────────────────────────────────────────────────
-
 function ticksSVG(status) {
   if (status === 'sent') return singleTick('#8696a0');
   if (status === 'delivered') return doubleTick('#8696a0');
@@ -581,14 +610,12 @@ function ticksSVG(status) {
 }
 
 function singleTick(color) {
-  return `<svg class="tick-svg" viewBox="0 0 16 11" fill="${color}" xmlns="http://www.w3.org/2000/svg"><path d="M11.071.643a.75.75 0 0 1 .043 1.06L5.8 7.976a.75.75 0 0 1-1.07.036L2.22 5.565a.75.75 0 0 1 1.06-1.06l2.003 2.003 4.73-5.822a.75.75 0 0 1 1.058-.043z"/></svg>`;
+  return `<svg class="tick-svg" viewBox="0 0 16 11" fill="${color}"><path d="M11.071.643a.75.75 0 0 1 .043 1.06L5.8 7.976a.75.75 0 0 1-1.07.036L2.22 5.565a.75.75 0 0 1 1.06-1.06l2.003 2.003 4.73-5.822a.75.75 0 0 1 1.058-.043z"/></svg>`;
 }
 
 function doubleTick(color) {
-  return `<svg class="tick-svg" viewBox="0 0 18 11" fill="${color}" xmlns="http://www.w3.org/2000/svg"><path d="M17.394.643a.75.75 0 0 1 .043 1.06l-5.316 6.273a.75.75 0 0 1-1.07.036L8.545 5.606a.75.75 0 0 1 1.06-1.06l1.998 1.997 4.73-5.857a.75.75 0 0 1 1.061-.043zM11.4.68a.75.75 0 0 1 .042 1.059L6.126 8.012a.75.75 0 0 1-1.07.036L2.55 5.606a.75.75 0 0 1 1.06-1.06l1.999 1.997 4.73-5.82A.75.75 0 0 1 11.4.68z"/></svg>`;
+  return `<svg class="tick-svg" viewBox="0 0 18 11" fill="${color}"><path d="M17.394.643a.75.75 0 0 1 .043 1.06l-5.316 6.273a.75.75 0 0 1-1.07.036L8.545 5.606a.75.75 0 0 1 1.06-1.06l1.998 1.997 4.73-5.857a.75.75 0 0 1 1.061-.043zM11.4.68a.75.75 0 0 1 .042 1.059L6.126 8.012a.75.75 0 0 1-1.07.036L2.55 5.606a.75.75 0 0 1 1.06-1.06l1.999 1.997 4.73-5.82A.75.75 0 0 1 11.4.68z"/></svg>`;
 }
-
-// ─── Toast ───────────────────────────────────────────────────────────────────
 
 function showToast(msg, isError = false) {
   let container = document.getElementById('toast-container');
@@ -603,7 +630,3 @@ function showToast(msg, isError = false) {
   container.appendChild(toast);
   setTimeout(() => toast.remove(), 4000);
 }
-
-// ─── Boot ─────────────────────────────────────────────────────────────────────
-
-document.addEventListener('DOMContentLoaded', init);

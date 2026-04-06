@@ -11,6 +11,8 @@ const CHATS_DIR = path.join(DATA_DIR, 'chats');
 const CONTACTS_FILE = path.join(DATA_DIR, 'contacts.json');
 const GROUPS_FILE = path.join(DATA_DIR, 'groups.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const ACCOUNT_FILE = path.join(DATA_DIR, 'account.json');
+const ACTIVE_CHATS_FILE = path.join(DATA_DIR, 'active-chats.json');
 
 // Ensure data dirs exist
 [DATA_DIR, CHATS_DIR].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); });
@@ -170,6 +172,7 @@ app.post('/api/chats/:contactId/send', async (req, res) => {
   };
 
   appendMessage(contactId, userMsg);
+  activateChat('contact', contactId);
   res.json(userMsg);
 
   // Show typing indicator
@@ -275,6 +278,7 @@ app.post('/api/groups/:groupId/send', async (req, res) => {
   };
 
   appendMessage(groupId, userMsg);
+  activateChat('group', groupId);
   res.json(userMsg);
 
   // Decide which members reply (1–all, weighted random)
@@ -371,6 +375,41 @@ function pickGroupRepliers(members, text) {
   return [...members].sort(() => Math.random() - 0.5).slice(0, count);
 }
 
+// ─── Account ─────────────────────────────────────────────────────────────────
+
+app.get('/api/account', (req, res) => {
+  const account = readJSON(ACCOUNT_FILE, null);
+  if (!account) return res.status(404).json({ error: 'No account' });
+  res.json(account);
+});
+
+app.post('/api/account', (req, res) => {
+  const { displayName, username } = req.body;
+  if (!displayName || !username) return res.status(400).json({ error: 'displayName and username required' });
+  const account = { displayName: displayName.trim(), username: username.trim().toLowerCase(), createdAt: Date.now() };
+  writeJSON(ACCOUNT_FILE, account);
+  res.json(account);
+});
+
+// ─── Active chats ─────────────────────────────────────────────────────────────
+
+function readActiveChats() {
+  return readJSON(ACTIVE_CHATS_FILE, { contacts: [], groups: [] });
+}
+
+function activateChat(type, id) {
+  const ac = readActiveChats();
+  const key = type === 'group' ? 'groups' : 'contacts';
+  if (!ac[key].includes(id)) {
+    ac[key].push(id);
+    writeJSON(ACTIVE_CHATS_FILE, ac);
+  }
+}
+
+app.get('/api/active-chats', (req, res) => {
+  res.json(readActiveChats());
+});
+
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 app.get('/api/settings', (req, res) => {
@@ -392,7 +431,12 @@ app.post('/api/settings', (req, res) => {
 // ─── Offline messages ────────────────────────────────────────────────────────
 
 async function generateOfflineMessages() {
-  const contacts = readJSON(CONTACTS_FILE, []);
+  const allContacts = readJSON(CONTACTS_FILE, []);
+  if (!allContacts.length) return;
+
+  // Only message contacts the user has already chatted with
+  const activeIds = readActiveChats().contacts;
+  const contacts = allContacts.filter(c => activeIds.includes(c.id));
   if (!contacts.length) return;
 
   // Pick 1-2 random contacts

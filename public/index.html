@@ -2,12 +2,42 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>WotsApp</title>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
-  <div id="app">
+
+  <!-- ── Account creation (shown on first launch) ── -->
+  <div id="setup-screen" class="hidden">
+    <div class="setup-inner">
+      <div class="setup-logo">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="50" cy="50" r="48" fill="#202c33"/>
+          <path d="M50 15C30.67 15 15 30.67 15 50c0 6.47 1.79 12.51 4.89 17.67L15 85l17.72-4.8A34.84 34.84 0 0 0 50 85c19.33 0 35-15.67 35-35S69.33 15 50 15z" fill="#00a884"/>
+          <path d="M35 42c0-1.1.9-2 2-2h26c1.1 0 2 .9 2 2s-.9 2-2 2H37c-1.1 0-2-.9-2-2zm0 9c0-1.1.9-2 2-2h18c1.1 0 2 .9 2 2s-.9 2-2 2H37c-1.1 0-2-.9-2-2z" fill="white"/>
+        </svg>
+      </div>
+      <h1>Welcome to WotsApp</h1>
+      <p class="setup-sub">Create your account to get started.</p>
+      <div class="setup-form">
+        <div class="setup-field">
+          <label for="setup-displayname">Your name</label>
+          <input type="text" id="setup-displayname" placeholder="e.g. Jamie" autocomplete="name" />
+        </div>
+        <div class="setup-field">
+          <label for="setup-username">Username</label>
+          <input type="text" id="setup-username" placeholder="e.g. jamie42" autocomplete="username" autocapitalize="none" />
+        </div>
+        <button class="setup-btn" id="btn-create-account">Get Started</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Main app ── -->
+  <div id="app" class="hidden">
 
     <!-- ── Sidebar ── -->
     <aside id="sidebar">
@@ -17,11 +47,8 @@
           <span class="app-title">WotsApp</span>
         </div>
         <div class="sidebar-header-actions">
-          <button class="icon-btn" id="btn-new-group" title="New group">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
-          </button>
-          <button class="icon-btn" id="btn-new-contact" title="New contact">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>
+          <button class="icon-btn" id="btn-new-chat" title="New chat">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
           </button>
           <button class="icon-btn" id="btn-settings" title="Settings">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
@@ -32,7 +59,7 @@
       <div id="search-bar">
         <div class="search-inner">
           <svg viewBox="0 0 24 24" fill="currentColor" class="search-icon"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-          <input type="text" id="search-input" placeholder="Search or start new chat" />
+          <input type="text" id="search-input" placeholder="Search chats" />
         </div>
       </div>
 
@@ -53,8 +80,8 @@
             </svg>
           </div>
           <h2>WotsApp Web</h2>
-          <p>Send and receive messages to your AI contacts.</p>
-          <p class="welcome-sub">Select a chat to get started, or add a new contact.</p>
+          <p>Your messages, your AI contacts.</p>
+          <p class="welcome-sub">Tap <strong>New Chat</strong> to start a conversation.</p>
         </div>
       </div>
 
@@ -88,43 +115,26 @@
     </main>
   </div>
 
-  <!-- ── Modals ── -->
-
-  <!-- New Contact -->
-  <div class="modal-overlay hidden" id="modal-contact">
-    <div class="modal">
-      <h3 id="modal-contact-title">Add Contact</h3>
-      <label>Name
-        <input type="text" id="contact-name" placeholder="e.g. Alex" />
-      </label>
-      <label>Personality description
-        <textarea id="contact-personality" placeholder="e.g. A cynical stand-up comedian who always finds the dark side of everything but secretly has a warm heart." rows="4"></textarea>
-      </label>
-      <div class="modal-actions">
-        <button class="btn-secondary" id="btn-contact-cancel">Cancel</button>
-        <button class="btn-primary" id="btn-contact-save">Save</button>
+  <!-- ── New Chat panel (contact directory) ── -->
+  <div class="modal-overlay hidden" id="panel-new-chat">
+    <div class="modal modal-wide">
+      <div class="modal-header">
+        <h3>New Chat</h3>
+        <button class="icon-btn" id="btn-close-new-chat">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
       </div>
+      <div class="modal-search">
+        <div class="search-inner">
+          <svg viewBox="0 0 24 24" fill="currentColor" class="search-icon"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          <input type="text" id="directory-search" placeholder="Search contacts and groups" />
+        </div>
+      </div>
+      <div id="directory-list"></div>
     </div>
   </div>
 
-  <!-- New Group -->
-  <div class="modal-overlay hidden" id="modal-group">
-    <div class="modal">
-      <h3>Create Group</h3>
-      <label>Group name
-        <input type="text" id="group-name" placeholder="e.g. The Gang" />
-      </label>
-      <label>Members
-        <div id="group-member-list"></div>
-      </label>
-      <div class="modal-actions">
-        <button class="btn-secondary" id="btn-group-cancel">Cancel</button>
-        <button class="btn-primary" id="btn-group-save">Create</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Settings -->
+  <!-- ── Settings ── -->
   <div class="modal-overlay hidden" id="modal-settings">
     <div class="modal">
       <h3>Settings</h3>
