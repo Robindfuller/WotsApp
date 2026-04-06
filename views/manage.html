@@ -833,24 +833,56 @@ function buildGroupCard(group) {
   return card;
 }
 
-function buildGroupMemberGrid(containerId, selectedIds) {
+async function buildGroupMemberGrid(containerId, selectedIds) {
   const container = document.getElementById(containerId);
   if (!container) return;
   container.innerHTML = '';
-  if (!contacts.length) {
+
+  // Fetch real users
+  let realUsers = [];
+  try { realUsers = await api('GET', '/api/users'); } catch {}
+
+  if (!contacts.length && !realUsers.length) {
     container.innerHTML = '<div style="color:var(--text2);font-size:13px;padding:4px">No contacts yet</div>';
     return;
   }
-  contacts.forEach(c => {
-    const label = document.createElement('label');
-    label.className = 'member-toggle';
-    label.innerHTML = `
-      <input type="checkbox" value="${c.id}" ${selectedIds.includes(c.id) ? 'checked' : ''} />
-      <span class="member-dot" style="background:${c.color}"></span>
-      <span>${esc(c.name)}</span>
-    `;
-    container.appendChild(label);
-  });
+
+  // Section: AI bots
+  if (contacts.length) {
+    const lbl = document.createElement('div');
+    lbl.style = 'font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;padding:2px 0 6px;width:100%';
+    lbl.textContent = 'AI Contacts';
+    container.appendChild(lbl);
+    contacts.forEach(c => {
+      const label = document.createElement('label');
+      label.className = 'member-toggle';
+      label.innerHTML = `
+        <input type="checkbox" value="${c.id}" ${selectedIds.includes(c.id) ? 'checked' : ''} />
+        <span class="member-dot" style="background:${c.color}"></span>
+        <span>${esc(c.name)}${c.username ? ` <span style="opacity:.6;font-size:12px">@${esc(c.username)}</span>` : ''}</span>
+      `;
+      container.appendChild(label);
+    });
+  }
+
+  // Section: Real users (stored as "user:{username}")
+  if (realUsers.length) {
+    const lbl = document.createElement('div');
+    lbl.style = 'font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;padding:8px 0 6px;width:100%';
+    lbl.textContent = 'People';
+    container.appendChild(lbl);
+    realUsers.forEach(u => {
+      const memberId = `user:${u.username}`;
+      const label = document.createElement('label');
+      label.className = 'member-toggle';
+      label.innerHTML = `
+        <input type="checkbox" value="${memberId}" ${selectedIds.includes(memberId) ? 'checked' : ''} />
+        <span class="member-dot" style="background:${u.color || '#3498db'}"></span>
+        <span>${esc(u.displayName)} <span style="opacity:.6;font-size:12px">@${esc(u.username)}</span></span>
+      `;
+      container.appendChild(label);
+    });
+  }
 }
 
 function buildNewGroupMemberList() {
