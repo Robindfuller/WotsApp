@@ -454,6 +454,10 @@
           <input type="text" class="field-input" id="new-name" placeholder="e.g. Jamie" />
         </div>
         <div>
+          <div class="field-label">Username</div>
+          <input type="text" class="field-input" id="new-username" placeholder="e.g. jamie" autocapitalize="none" style="font-family:monospace" />
+        </div>
+        <div>
           <div class="field-label">Avatar color</div>
           <div class="color-row" id="new-color-row"></div>
         </div>
@@ -591,7 +595,7 @@ function buildContactCard(contact) {
     <div class="card-top">
       <div class="contact-avatar" style="background:${contact.color}" data-id="${contact.id}" title="Click to change color">${initial}</div>
       <div class="card-info">
-        <div class="card-name">${esc(contact.name)}</div>
+        <div class="card-name">${esc(contact.name)}${contact.username ? `<span style="font-size:12px;color:var(--text2);font-weight:400;margin-left:6px;font-family:monospace">@${esc(contact.username)}</span>` : ''}</div>
         <div class="card-personality">${esc(shortBio)}</div>
       </div>
     </div>
@@ -611,9 +615,15 @@ function buildContactCard(contact) {
 
     <!-- Edit panel -->
     <div class="card-editor" id="edit-${contact.id}">
-      <div>
-        <div class="field-label">Name</div>
-        <input type="text" class="field-input" id="edit-name-${contact.id}" value="${esc(contact.name)}" />
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div>
+          <div class="field-label">Name</div>
+          <input type="text" class="field-input" id="edit-name-${contact.id}" value="${esc(contact.name)}" />
+        </div>
+        <div>
+          <div class="field-label">Username</div>
+          <input type="text" class="field-input" id="edit-username-${contact.id}" value="${esc(contact.username || '')}" placeholder="e.g. jamie" autocapitalize="none" style="font-family:monospace" />
+        </div>
       </div>
       <div>
         <div class="field-label">Avatar color</div>
@@ -700,6 +710,7 @@ async function saveContact(id) {
   const contact = contacts.find(c => c.id === id);
   if (!contact) return;
   const name = document.getElementById(`edit-name-${id}`)?.value.trim();
+  const username = (document.getElementById(`edit-username-${id}`)?.value.trim() || '').replace(/^@/, '').toLowerCase();
   const personality = document.getElementById(`edit-personality-${id}`)?.value.trim();
   if (!name) { toast('Name is required', true); return; }
 
@@ -709,7 +720,7 @@ async function saveContact(id) {
   const color = avatarEl?.style.background || contact.color;
 
   try {
-    const updated = await api('PUT', `/api/contacts/${id}`, { name, personality, color });
+    const updated = await api('PUT', `/api/contacts/${id}`, { name, username, personality, color });
     Object.assign(contact, updated);
     toast(`${name} saved`);
     toggleEdit(id);
@@ -737,14 +748,16 @@ function setupNewContactColorRow() {
 
 async function saveNewContact() {
   const name = document.getElementById('new-name').value.trim();
+  const username = document.getElementById('new-username').value.trim().replace(/^@/, '').toLowerCase();
   const personality = document.getElementById('new-personality').value.trim();
   if (!name) { toast('Name is required', true); return; }
   if (!personality) { toast('Personality is required', true); return; }
   try {
-    const c = await api('POST', '/api/contacts', { name, personality, color: newContactColor });
+    const c = await api('POST', '/api/contacts', { name, username, personality, color: newContactColor });
     contacts.push(c);
     toast(`${name} created`);
     document.getElementById('new-name').value = '';
+    document.getElementById('new-username').value = '';
     document.getElementById('new-personality').value = '';
     document.getElementById('new-contact-form').classList.remove('open');
     renderContactsGrid();

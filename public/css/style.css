@@ -179,6 +179,15 @@ html, body { height: 100%; overflow: hidden; background: var(--bg-deep); font-fa
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 200px;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.chat-item-handle {
+  font-size: 12px;
+  color: var(--text-ts);
+  font-weight: 400;
+  flex-shrink: 0;
 }
 .chat-item-time {
   font-size: 12px;

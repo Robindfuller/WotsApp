@@ -125,6 +125,7 @@ app.post('/api/contacts', (req, res) => {
   const contact = {
     id: uuidv4(),
     name: req.body.name,
+    username: req.body.username ? req.body.username.replace(/^@/, '').toLowerCase() : '',
     personality: req.body.personality,
     avatar: req.body.avatar || null,
     color: req.body.color || randomColor(),
@@ -476,13 +477,36 @@ async function generateOfflineMessages() {
 
 // ─── Prompt builders ─────────────────────────────────────────────────────────
 
+function buildContactRoster() {
+  const allContacts = readJSON(CONTACTS_FILE, []);
+  const account = readJSON(ACCOUNT_FILE, null);
+
+  const lines = allContacts.map(c => {
+    const handle = c.username ? `@${c.username}` : c.name;
+    return `- ${handle} (${c.name}): ${c.personality}`;
+  });
+
+  const userLine = account
+    ? `The person you are messaging is ${account.displayName}${account.username ? ` (@${account.username})` : ''}.`
+    : '';
+
+  return `People in this messaging app:\n${lines.join('\n')}\n\n${userLine}`.trim();
+}
+
 function buildSystemPrompt(contact) {
-  return `You are ${contact.name}, a person with the following personality:\n${contact.personality}\n\nYou are chatting via a messaging app. Keep replies conversational, natural, and in character. Don't be overly formal. Use casual language appropriate to your character. Keep most replies fairly short (1-4 sentences) unless the conversation calls for more. Never break character or acknowledge you are an AI.`;
+  const handle = contact.username ? `@${contact.username} (${contact.name})` : contact.name;
+  const roster = buildContactRoster();
+  return `You are ${handle}, a person with the following personality:\n${contact.personality}\n\n${roster}\n\nWhen personality descriptions reference @usernames, those are real people in this contact list — use that context naturally. You are chatting via a messaging app. Keep replies conversational, natural, and in character. Don't be overly formal. Keep most replies fairly short (1-4 sentences) unless the conversation calls for more. Never break character or acknowledge you are an AI.`;
 }
 
 function buildGroupSystemPrompt(contact, group, allMembers) {
-  const others = allMembers.filter(m => m.id !== contact.id).map(m => m.name).join(', ');
-  return `You are ${contact.name}, a person with the following personality:\n${contact.personality}\n\nYou are in a group chat called "${group.name}" with ${others} and the user. Keep replies conversational and natural. In group chats, sometimes reply to specific people (use their name), sometimes address the group. Keep it short and realistic. Never acknowledge you are an AI.`;
+  const handle = contact.username ? `@${contact.username} (${contact.name})` : contact.name;
+  const others = allMembers
+    .filter(m => m.id !== contact.id)
+    .map(m => m.username ? `@${m.username} (${m.name})` : m.name)
+    .join(', ');
+  const roster = buildContactRoster();
+  return `You are ${handle}, a person with the following personality:\n${contact.personality}\n\n${roster}\n\nYou are in a group chat called "${group.name}" with ${others} and the user. Keep replies conversational and natural. In group chats, sometimes reply to specific people (use their name or @handle), sometimes address the group. Keep it short and realistic. Never acknowledge you are an AI.`;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

@@ -149,7 +149,7 @@ function buildChatItem(item) {
     <div class="chat-item-avatar ${item.isGroup ? 'group-avatar' : ''}" style="${avatarStyle}">${initials}</div>
     <div class="chat-item-body">
       <div class="chat-item-top">
-        <span class="chat-item-name">${esc(item.name)}</span>
+        <span class="chat-item-name">${esc(item.name)}</span>${item.username ? `<span class="chat-item-handle">@${esc(item.username)}</span>` : ''}
         <span class="chat-item-time ${isUnread ? 'unread-time' : ''}">${timeStr}</span>
       </div>
       <div class="chat-item-bottom">
@@ -207,7 +207,7 @@ function renderDirectory(search) {
       row.innerHTML = `
         <div class="dir-item-avatar" style="background:${c.color}">${c.name.charAt(0).toUpperCase()}</div>
         <div class="dir-item-info">
-          <div class="dir-item-name">${esc(c.name)}</div>
+          <div class="dir-item-name">${esc(c.name)}${c.username ? `<span style="font-size:13px;color:var(--text-sec);font-weight:400;margin-left:6px">@${esc(c.username)}</span>` : ''}</div>
           <div class="dir-item-bio">${esc(truncate(c.personality, 55))}</div>
         </div>
         ${isActive ? '<span class="dir-item-active">In chats</span>' : ''}
@@ -278,7 +278,7 @@ async function openChat(chatId, isGroup) {
   document.getElementById('chat-header-name').textContent = entity.name;
   document.getElementById('chat-header-status').textContent = isGroup
     ? entity.members.map(id => contacts.find(c => c.id === id)?.name).filter(Boolean).join(', ')
-    : 'AI contact';
+    : (entity.username ? `@${entity.username}` : 'AI contact');
 
   const chat = await api('GET', `/api/chats/${chatId}`);
   renderMessages(chat.messages, isGroup);
