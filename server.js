@@ -239,6 +239,15 @@ app.post('/api/groups', (req, res) => {
   res.json(group);
 });
 
+app.put('/api/groups/:id', (req, res) => {
+  const groups = readJSON(GROUPS_FILE, []);
+  const idx = groups.findIndex(g => g.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Not found' });
+  groups[idx] = { ...groups[idx], ...req.body, id: groups[idx].id };
+  writeJSON(GROUPS_FILE, groups);
+  res.json(groups[idx]);
+});
+
 app.delete('/api/groups/:id', (req, res) => {
   let groups = readJSON(GROUPS_FILE, []);
   groups = groups.filter(g => g.id !== req.params.id);
@@ -438,6 +447,12 @@ function randomColor() {
   const colors = ['#e74c3c','#e67e22','#f39c12','#2ecc71','#1abc9c','#3498db','#9b59b6','#e91e63'];
   return colors[Math.floor(Math.random() * colors.length)];
 }
+
+// ─── Editor page ─────────────────────────────────────────────────────────────
+
+app.get('/manage', (req, res) => {
+  res.sendFile(path.join(__dirname, 'views', 'manage.html'));
+});
 
 // ─── Start ───────────────────────────────────────────────────────────────────
 
